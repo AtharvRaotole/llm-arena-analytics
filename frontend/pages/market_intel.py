@@ -15,7 +15,9 @@ import plotly.graph_objects as go
 import requests
 
 # Add backend to path for imports
-backend_path = Path(__file__).parent.parent.parent / "backend"
+backend_path = Path(__file__).parent / "backend"
+if not backend_path.exists():
+    backend_path = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(backend_path))
 
 from database.db_manager import DatabaseManager
@@ -28,6 +30,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Professional styling
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    h1, h2, h3 { font-family: 'Inter', sans-serif; font-weight: 600; color: #ffffff !important; }
+    p, div, span, label { font-family: 'Inter', sans-serif; color: #e0e0e0 !important; }
+</style>
+""", unsafe_allow_html=True)
 
 # API base URL (can be configured)
 API_BASE_URL = "http://localhost:8000"
@@ -117,8 +128,16 @@ def get_rank_change_indicator(change: int) -> str:
 
 def show_market_intel_page() -> None:
     """Display the Market Intelligence page."""
-    st.header("🔮 Market Intelligence")
-    st.markdown("Predictions, trends, and insights for LLM market")
+    # Professional header
+    st.markdown("""
+    <div style='padding: 2rem 0; border-bottom: 2px solid rgba(102, 126, 234, 0.3); margin-bottom: 2rem;'>
+        <h1 style='margin: 0; font-size: 2.8rem; font-weight: 700; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                   -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
+            🔮 Market Intelligence
+        </h1>
+        <p style='margin-top: 0.5rem; color: #b0b0b0; font-size: 1.1rem;'>Predictions, trends, and insights for LLM market</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     forecaster = get_trend_forecaster()
     
@@ -360,16 +379,16 @@ def show_market_intel_page() -> None:
         # Trend insights
         if 'selected_models' in locals() and selected_models:
             for model_name in selected_models[:5]:
-            try:
-                forecast_data = fetch_model_forecast(model_name, days_ahead=30)
-                trend = forecast_data.get('trend', {})
-                if trend.get('trend') == 'rising' and trend.get('percentage_change', 0) > 5:
-                    insights.append(
-                        f"**{model_name}** showing strong upward trend "
-                        f"(+{trend['percentage_change']:.1f}% over 30 days)"
-                    )
-            except:
-                continue
+                try:
+                    forecast_data = fetch_model_forecast(model_name, days_ahead=30)
+                    trend = forecast_data.get('trend', {})
+                    if trend.get('trend') == 'rising' and trend.get('percentage_change', 0) > 5:
+                        insights.append(
+                            f"**{model_name}** showing strong upward trend "
+                            f"(+{trend['percentage_change']:.1f}% over 30 days)"
+                        )
+                except:
+                    continue
     
     # Display insights
     if insights:

@@ -7,7 +7,9 @@ the current LLM Arena leaderboard.
 
 import streamlit as st
 import sys
+import os
 from pathlib import Path
+from typing import List, Dict, Optional, Any
 from datetime import datetime, date, timedelta
 import pandas as pd
 import plotly.express as px
@@ -15,10 +17,29 @@ import plotly.graph_objects as go
 import numpy as np
 
 # Add backend to path for imports
-backend_path = Path(__file__).parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
+# Try multiple possible paths
+backend_paths = [
+    Path("/app/backend"),  # Absolute path in Docker (mounted volume)
+    Path(__file__).parent / "backend",  # /app/backend (relative)
+    Path(__file__).parent.parent / "backend",  # ../backend (local dev)
+]
 
-from database.db_manager import DatabaseManager
+backend_path = None
+for path in backend_paths:
+    if path.exists() and (path / "database").exists():
+        backend_path = path
+        break
+
+if backend_path:
+    sys.path.insert(0, str(backend_path))
+    try:
+        from database.db_manager import DatabaseManager
+    except ImportError as e:
+        st.error(f"Failed to import DatabaseManager: {e}")
+        DatabaseManager = None
+else:
+    st.error("Backend directory not found. Please check Docker volume mounts.")
+    DatabaseManager = None
 
 
 # Configure page
@@ -26,8 +47,236 @@ st.set_page_config(
     page_title="LLM Arena Analytics",
     page_icon="🏆",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': "LLM Arena Analytics - Real-time intelligence platform for LLM model performance"
+    }
 )
+
+# Custom CSS for professional styling
+st.markdown("""
+<style>
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    /* Root styling - Clean dark theme */
+    .main {
+        background: #0a0e27;
+    }
+    
+    /* Headers */
+    h1, h2, h3 {
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+        color: #ffffff !important;
+        letter-spacing: -0.02em;
+    }
+    
+    h1 {
+        font-size: 2.5rem;
+        color: #ffffff !important;
+        margin-bottom: 1rem;
+    }
+    
+    /* Text */
+    p, div, span, label {
+        font-family: 'Inter', sans-serif;
+        color: #e0e0e0 !important;
+    }
+    
+    /* Sidebar */
+    .css-1d391kg {
+        background: #111827;
+    }
+    
+    [data-testid="stSidebar"] {
+        background: #111827;
+        border-right: 1px solid #1f2937;
+    }
+    
+    [data-testid="stSidebar"] .css-1d391kg {
+        background: transparent;
+    }
+    
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 2rem;
+        color: #ffffff !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        font-family: 'Inter', sans-serif;
+        font-weight: 500;
+        color: #b0b0b0 !important;
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+        background: #374151 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px;
+        padding: 0.5rem 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        background: #4b5563 !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(55, 65, 81, 0.4);
+    }
+    
+    .stButton > button:focus {
+        background: #374151 !important;
+        box-shadow: none !important;
+    }
+    
+    /* Dataframes */
+    .dataframe {
+        background: #1a1a2e;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    /* Selectbox and inputs */
+    .stSelectbox label, .stSlider label {
+        font-family: 'Inter', sans-serif;
+        font-weight: 500;
+        color: #ffffff !important;
+    }
+    
+    /* Cards and containers */
+    .element-container {
+        background: rgba(17, 24, 39, 0.8);
+        border-radius: 12px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border: 1px solid rgba(31, 41, 55, 0.5);
+    }
+    
+    /* Code blocks */
+    code {
+        font-family: 'JetBrains Mono', monospace;
+        background: #0f0f23;
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+        color: #a78bfa;
+    }
+    
+    /* Info boxes */
+    .stInfo {
+        background: rgba(59, 130, 246, 0.1);
+        border-left: 4px solid #3b82f6;
+        border-radius: 4px;
+    }
+    
+    .stSuccess {
+        background: rgba(34, 197, 94, 0.1);
+        border-left: 4px solid #22c55e;
+        border-radius: 4px;
+    }
+    
+    .stWarning {
+        background: rgba(234, 179, 8, 0.1);
+        border-left: 4px solid #eab308;
+        border-radius: 4px;
+    }
+    
+    .stError {
+        background: rgba(239, 68, 68, 0.1);
+        border-left: 4px solid #ef4444;
+        border-radius: 4px;
+    }
+    
+    /* Tabs - Remove all blue colors with !important */
+    .stTabs [data-baseweb="tab-list"] {
+        background: rgba(17, 24, 39, 0.8) !important;
+        border-radius: 8px;
+        padding: 0.5rem;
+        border: 1px solid rgba(31, 41, 55, 0.5) !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        color: #9ca3af !important;
+        font-weight: 500;
+        background: transparent !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        color: #ffffff !important;
+        background: #374151 !important;
+    }
+    
+    /* Override Streamlit's default blue tab styling */
+    .stTabs [data-baseweb="tab"]:focus,
+    .stTabs [data-baseweb="tab"]:hover {
+        background: #374151 !important;
+        color: #ffffff !important;
+    }
+    
+    /* Remove blue underline/border */
+    .stTabs [aria-selected="true"]::after,
+    .stTabs [aria-selected="true"]::before {
+        background: #374151 !important;
+        border-color: #374151 !important;
+    }
+    
+    /* Remove any blue border-bottom */
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        border-bottom: 2px solid #374151 !important;
+    }
+    
+    /* Override any inline styles Streamlit might add */
+    .stTabs [data-baseweb="tab"][style*="blue"],
+    .stTabs [data-baseweb="tab"][style*="rgb"] {
+        background: #374151 !important;
+    }
+    
+    /* Override Streamlit's default blue tab styling */
+    .stTabs [data-baseweb="tab"]:focus,
+    .stTabs [data-baseweb="tab"]:hover {
+        background: #374151 !important;
+        color: #ffffff !important;
+    }
+    
+    /* Remove blue underline/border */
+    .stTabs [aria-selected="true"]::after,
+    .stTabs [aria-selected="true"]::before {
+        background: #374151 !important;
+        border-color: #374151 !important;
+    }
+    
+    /* Remove any blue border-bottom */
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        border-bottom: 2px solid #374151 !important;
+    }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #111827;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #374151;
+        border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #4b5563;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Initialize session state
 if 'last_refresh' not in st.session_state:
@@ -55,45 +304,56 @@ def get_leaderboard_data(limit: int = 20) -> pd.DataFrame:
     db = get_db_manager()
     
     try:
-        # Get latest arena rankings
+        # Get latest arena rankings - use DISTINCT ON to get only the most recent ranking per model
         query = """
-            SELECT 
-                ar.rank_position as Rank,
-                m.name as Model,
-                COALESCE(m.provider, 'Unknown') as Provider,
-                ar.elo_rating as Score,
-                ar.win_rate as Win_Rate,
-                ar.total_battles as Total_Battles,
-                ar.recorded_at as Last_Updated
+            SELECT DISTINCT ON (m.id)
+                ar.rank_position as rank,
+                m.name as model,
+                COALESCE(m.provider, 'Unknown') as provider,
+                ar.elo_rating as score,
+                ar.win_rate as win_rate,
+                ar.total_battles as total_battles,
+                ar.recorded_at as last_updated
             FROM arena_rankings ar
             JOIN models m ON ar.model_id = m.id
-            WHERE ar.recorded_at >= CURRENT_DATE - INTERVAL '7 days'
-            ORDER BY ar.rank_position ASC
+            ORDER BY m.id, ar.recorded_at DESC
             LIMIT %s
         """
         
         results = db.execute_query(query, (limit,))
         
-        if not results:
-            # Fallback: get any recent rankings
-            query = """
-                SELECT DISTINCT ON (m.id)
-                    ar.rank_position as Rank,
-                    m.name as Model,
-                    COALESCE(m.provider, 'Unknown') as Provider,
-                    ar.elo_rating as Score,
-                    ar.win_rate as Win_Rate,
-                    ar.total_battles as Total_Battles,
-                    ar.recorded_at as Last_Updated
-                FROM arena_rankings ar
-                JOIN models m ON ar.model_id = m.id
-                ORDER BY m.id, ar.recorded_at DESC
-                LIMIT %s
-            """
-            results = db.execute_query(query, (limit,))
-        
         if results:
             df = pd.DataFrame(results)
+            # Normalize column names (PostgreSQL returns lowercase, convert to title case)
+            # Map lowercase to proper case
+            column_mapping = {
+                'rank': 'Rank',
+                'model': 'Model',
+                'provider': 'Provider',
+                'score': 'Score',
+                'win_rate': 'Win_Rate',
+                'total_battles': 'Total_Battles',
+                'last_updated': 'Last_Updated'
+            }
+            # Only rename columns that exist
+            rename_dict = {k: v for k, v in column_mapping.items() if k in df.columns}
+            if rename_dict:
+                df = df.rename(columns=rename_dict)
+            
+            # Ensure critical columns exist (fallback to lowercase if needed)
+            if 'Model' not in df.columns:
+                if 'model' in df.columns:
+                    df['Model'] = df['model']
+                else:
+                    st.error("Missing Model column in data")
+                    return pd.DataFrame()
+            
+            # Remove duplicates - keep only the most recent entry per model
+            if 'Model' in df.columns:
+                df = df.sort_values('Last_Updated', ascending=False).drop_duplicates(subset=['Model'], keep='first')
+                # Re-sort by rank
+                df = df.sort_values('Rank', ascending=True).reset_index(drop=True)
+            
             # Format columns
             if 'Score' in df.columns:
                 df['Score'] = df['Score'].round(1)
@@ -183,10 +443,10 @@ def get_time_series_data(
         placeholders = ','.join(['%s'] * len(model_ids))
         query = f"""
             SELECT 
-                m.name as Model,
-                m.provider as Provider,
-                ar.elo_rating as Score,
-                ar.recorded_at as Date
+                m.name as model,
+                m.provider as provider,
+                ar.elo_rating as score,
+                ar.recorded_at as date
             FROM arena_rankings ar
             JOIN models m ON ar.model_id = m.id
             WHERE ar.model_id IN ({placeholders})
@@ -200,6 +460,16 @@ def get_time_series_data(
         
         if results:
             df = pd.DataFrame(results)
+            # Normalize column names to title case
+            column_mapping = {
+                'model': 'Model',
+                'provider': 'Provider',
+                'score': 'Score',
+                'date': 'Date'
+            }
+            rename_dict = {k: v for k, v in column_mapping.items() if k in df.columns}
+            if rename_dict:
+                df = df.rename(columns=rename_dict)
             # Convert Date to datetime
             if 'Date' in df.columns:
                 df['Date'] = pd.to_datetime(df['Date'])
@@ -225,23 +495,32 @@ def calculate_statistics(df: pd.DataFrame) -> pd.DataFrame:
     
     stats_list = []
     
-    for model in df['Model'].unique():
-        model_data = df[df['Model'] == model].copy()
-        model_data = model_data.sort_values('Date')
+    # Handle case-insensitive column access
+    model_col = 'Model' if 'Model' in df.columns else ('model' if 'model' in df.columns else None)
+    score_col = 'Score' if 'Score' in df.columns else ('score' if 'score' in df.columns else None)
+    date_col = 'Date' if 'Date' in df.columns else ('date' if 'date' in df.columns else None)
+    
+    if not model_col or not score_col:
+        return pd.DataFrame()
+    
+    for model in df[model_col].unique():
+        model_data = df[df[model_col] == model].copy()
+        if date_col:
+            model_data = model_data.sort_values(date_col)
         
         if len(model_data) == 0:
             continue
         
-        current_score = model_data['Score'].iloc[-1]
-        start_score = model_data['Score'].iloc[0]
+        current_score = model_data[score_col].iloc[-1]
+        start_score = model_data[score_col].iloc[0]
         change = current_score - start_score
-        volatility = model_data['Score'].std()
+        volatility = model_data[score_col].std()
         
         # Calculate trend
         if len(model_data) > 1:
             # Simple linear regression slope
             x = np.arange(len(model_data))
-            y = model_data['Score'].values
+            y = model_data[score_col].values
             slope = np.polyfit(x, y, 1)[0]
             
             if slope > 0.1:
@@ -340,20 +619,30 @@ def show_performance_trends() -> None:
     
     fig = go.Figure()
     
-    for i, model in enumerate(df['Model'].unique()):
-        model_data = df[df['Model'] == model].copy()
-        model_data = model_data.sort_values('Date')
+    # Handle case-insensitive column access
+    model_col = 'Model' if 'Model' in df.columns else ('model' if 'model' in df.columns else None)
+    score_col = 'Score' if 'Score' in df.columns else ('score' if 'score' in df.columns else None)
+    date_col = 'Date' if 'Date' in df.columns else ('date' if 'date' in df.columns else None)
+    
+    if not model_col or not score_col or not date_col:
+        st.error("Missing required columns in data")
+        return go.Figure()
+    
+    for i, model in enumerate(df[model_col].unique()):
+        model_data = df[df[model_col] == model].copy()
+        model_data = model_data.sort_values(date_col)
         
         fig.add_trace(go.Scatter(
-            x=model_data['Date'],
-            y=model_data['Score'],
+            x=model_data[date_col],
+            y=model_data[score_col],
             mode='lines+markers',
             name=model,
-            line=dict(width=2),
-            marker=dict(size=4),
-            hovertemplate=f'<b>{model}</b><br>' +
-                         'Date: %{x}<br>' +
-                         'Score: %{y:.1f}<extra></extra>'
+            line=dict(width=3, color=colors[i % len(colors)]),
+            marker=dict(size=6, color=colors[i % len(colors)], line=dict(width=1, color='white')),
+            hovertemplate=f'<b style="font-size: 14px;">{model}</b><br>' +
+                         '<span style="color: #b0b0b0;">Date:</span> %{x|%Y-%m-%d}<br>' +
+                         '<span style="color: #b0b0b0;">Score:</span> <b>%{y:.1f}</b><extra></extra>',
+            fill='tonexty' if i > 0 else None
         ))
     
     # Add annotations for major events
@@ -448,7 +737,7 @@ def color_provider(val: str) -> str:
         'OpenAI': '#10B981',  # Green
         'Anthropic': '#F59E0B',  # Orange/Amber
         'Google': '#3B82F6',  # Blue
-        'Meta': '#8B5CF6',  # Purple
+        'Meta': '#6366f1',  # Indigo
         'Mistral AI': '#EC4899',  # Pink
         'Unknown': '#6B7280',  # Gray
     }
@@ -472,27 +761,52 @@ def show_leaderboard() -> None:
         3. Refresh this page
         """)
     else:
-        # Display stats
+        # Display stats with professional styling
+        st.markdown("### 📊 Overview Metrics")
         col1, col2, col3, col4 = st.columns(4)
+        
         with col1:
-            st.metric("Models Shown", len(df))
+            st.markdown("""
+            <div style='background: #1f2937; padding: 1.5rem; border-radius: 12px; border: 1px solid #374151;'>
+                <div style='font-size: 0.9rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 500;'>Models Tracked</div>
+                <div style='font-size: 2rem; font-weight: 700; color: #ffffff;'>{}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
         with col2:
             if 'Score' in df.columns:
                 avg_score = df['Score'].mean()
-                st.metric("Avg Score", f"{avg_score:.1f}")
+                st.markdown("""
+                <div style='background: #1f2937; padding: 1.5rem; border-radius: 12px; border: 1px solid #374151;'>
+                    <div style='font-size: 0.9rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 500;'>Average Score</div>
+                    <div style='font-size: 2rem; font-weight: 700; color: #ffffff;'>{:.1f}</div>
+                </div>
+                """.format(avg_score), unsafe_allow_html=True)
+        
         with col3:
             if 'Provider' in df.columns:
                 unique_providers = df['Provider'].nunique()
-                st.metric("Providers", unique_providers)
+                st.markdown("""
+                <div style='background: #1f2937; padding: 1.5rem; border-radius: 12px; border: 1px solid #374151;'>
+                    <div style='font-size: 0.9rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 500;'>Providers</div>
+                    <div style='font-size: 2rem; font-weight: 700; color: #ffffff;'>{}</div>
+                </div>
+                """.format(unique_providers), unsafe_allow_html=True)
+        
         with col4:
             if 'Total_Battles' in df.columns:
-                total_battles = df['Total_Battles'].sum()
-                st.metric("Total Battles", f"{total_battles:,}")
+                total_battles = df['Total_Battles'].sum() if df['Total_Battles'].notna().any() else 0
+                st.markdown("""
+                <div style='background: #1f2937; padding: 1.5rem; border-radius: 12px; border: 1px solid #374151;'>
+                    <div style='font-size: 0.9rem; color: #9ca3af; margin-bottom: 0.5rem; font-weight: 500;'>Total Battles</div>
+                    <div style='font-size: 2rem; font-weight: 700; color: #ffffff;'>{:,}</div>
+                </div>
+                """.format(int(total_battles)), unsafe_allow_html=True)
         
-        st.markdown("---")
+        st.markdown("<br>", unsafe_allow_html=True)
         
         # Display leaderboard table
-        st.subheader("Top 20 Models")
+        st.markdown("### 🎯 Top Models Leaderboard")
         
         # Prepare display dataframe
         display_df = df.copy()
@@ -514,26 +828,46 @@ def show_leaderboard() -> None:
             'Total_Battles': 'Total Battles'
         })
         
-        # Style the dataframe
-        def style_row(row):
-            """Style each row based on provider."""
-            provider = row.get('Provider', 'Unknown')
-            colors = {
-                'OpenAI': '#E0F2FE',  # Light blue
-                'Anthropic': '#FEF3C7',  # Light orange
-                'Google': '#DBEAFE',  # Light blue
-                'Meta': '#EDE9FE',  # Light purple
-                'Mistral AI': '#FCE7F3',  # Light pink
+        # Add CSS to completely remove blue colors from table
+        st.markdown("""
+        <style>
+            /* Override Streamlit's default blue selection/hover colors */
+            .dataframe tbody tr:hover {
+                background: #374151 !important;
             }
-            bg_color = colors.get(provider, '#F3F4F6')  # Light gray default
-            return [f'background-color: {bg_color}'] * len(row)
+            .dataframe tbody tr:hover td {
+                background: transparent !important;
+                color: #e5e7eb !important;
+            }
+            /* Remove any blue borders, backgrounds, or highlights */
+            .dataframe {
+                border: 1px solid #374151 !important;
+            }
+            .dataframe thead th {
+                background: #1f2937 !important;
+                border-bottom: 2px solid #374151 !important;
+                color: #ffffff !important;
+            }
+            .dataframe tbody tr {
+                background: #111827 !important;
+            }
+            .dataframe tbody tr:nth-child(even) {
+                background: #1f2937 !important;
+            }
+            .dataframe tbody td {
+                color: #e5e7eb !important;
+            }
+            /* Remove any blue selection */
+            .dataframe tbody tr:focus,
+            .dataframe tbody tr:focus-within {
+                background: #374151 !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
         
-        # Apply styling
-        styled_df = display_df.style.apply(style_row, axis=1)
-        
-        # Display styled dataframe
+        # Clean, readable dataframe - no row coloring for better readability
         st.dataframe(
-            styled_df,
+            display_df,
             use_container_width=True,
             hide_index=True,
             height=600
@@ -562,9 +896,17 @@ def show_leaderboard() -> None:
 
 def main() -> None:
     """Main dashboard function."""
-    # Title
-    st.title("🏆 LLM Arena Analytics")
-    st.markdown("---")
+    # Clean title with minimal spacing
+    st.markdown("""
+    <div style='text-align: center; padding: 0; margin: 0 0 1rem 0;'>
+        <h1 style='font-size: 2.5rem; font-weight: 700; margin: 0; padding: 0; color: #ffffff;'>
+            🏆 LLM Arena Analytics
+        </h1>
+        <p style='font-size: 0.9rem; color: #9ca3af; margin: 0.25rem 0 0 0; padding: 0; font-weight: 400;'>
+            Real-time intelligence platform for LLM model performance, costs, and trends
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Create tabs
     tab1, tab2 = st.tabs(["🏆 Leaderboard", "📈 Performance Trends"])
@@ -623,14 +965,42 @@ def main() -> None:
         show_performance_trends()
 
 
-# Navigation setup
+# Navigation setup - using sidebar for Streamlit 1.28.1 compatibility
 if __name__ == "__main__":
-    pg = st.navigation([
-        st.Page("app.py", title="Arena", icon="🏆"),
-        st.Page("pages/cost_intelligence.py", title="Cost Intelligence", icon="💰"),
-        st.Page("pages/market_intel.py", title="Market Intelligence", icon="🔮"),
-    ])
-    pg.run()
+    # Clean sidebar navigation
+    st.sidebar.markdown("""
+    <div style='padding: 1.5rem 0; border-bottom: 2px solid #374151; margin-bottom: 1.5rem;'>
+        <h2 style='margin: 0; color: #ffffff; font-size: 1.5rem; font-weight: 600;'>🧭 Navigation</h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    page = st.sidebar.radio(
+        "Select Page",
+        ["🏆 Leaderboard", "📊 Arena Rankings", "📈 Performance", "💰 Cost Intelligence", "🔮 Market Intelligence"],
+        key="page_selector",
+        label_visibility="collapsed"
+    )
+    
+    if page == "🏆 Leaderboard":
+        main()
+    elif page == "📊 Arena Rankings":
+        import pages.arena as arena_page
+        arena_page.show_arena_page()
+    elif page == "📈 Performance":
+        import pages.performance as perf_page
+        perf_page.show_performance_page()
+    elif page == "💰 Cost Intelligence":
+        import pages.cost_intelligence as cost_page
+        if hasattr(cost_page, 'show_cost_intelligence_page'):
+            cost_page.show_cost_intelligence_page()
+        else:
+            cost_page.main()
+    elif page == "🔮 Market Intelligence":
+        import pages.market_intel as market_page
+        if hasattr(market_page, 'show_market_intel_page'):
+            market_page.show_market_intel_page()
+        else:
+            market_page.main()
 else:
     # When imported as a page, run main
     main()

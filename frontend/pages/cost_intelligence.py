@@ -14,7 +14,9 @@ import plotly.graph_objects as go
 import numpy as np
 
 # Add backend to path for imports
-backend_path = Path(__file__).parent.parent.parent / "backend"
+backend_path = Path(__file__).parent / "backend"
+if not backend_path.exists():
+    backend_path = Path(__file__).parent.parent / "backend"
 sys.path.insert(0, str(backend_path))
 
 from database.db_manager import DatabaseManager

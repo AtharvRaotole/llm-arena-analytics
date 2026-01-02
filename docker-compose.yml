@@ -58,10 +58,16 @@ services:
     container_name: llm_arena_frontend
     environment:
       API_BASE_URL: http://backend:8000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-llm_arena_analytics}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       - "8501:8501"
     volumes:
       - ./frontend:/app
+      - ./backend:/app/backend
     depends_on:
       backend:
         condition: service_healthy
