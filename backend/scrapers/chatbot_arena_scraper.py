@@ -274,30 +274,41 @@ class ChatbotArenaScraper:
             # If still no models, try alternative data sources
             if not models:
                 logger.info("Trying alternative data sources")
-                # Try multiple API endpoints and direct URLs
+                # Try multiple API endpoints and direct URLs (in order of likelihood)
                 alternative_urls = [
+                    "https://huggingface.co/api/datasets/lmsys/chatbot-arena-leaderboard",
+                    "https://huggingface.co/api/spaces/lmsys/chatbot-arena-leaderboard",
+                    "https://lmsys.org/api/leaderboard",
+                    "https://chat.lmsys.org/api/leaderboard",
                     "https://arena.lmsys.org/api/leaderboard",
                     "https://arena.lmsys.org/api/elo",
-                    "https://huggingface.co/api/spaces/lmsys/chatbot-arena-leaderboard",
-                    "https://chat.lmsys.org/api/leaderboard",
                 ]
                 
                 for alt_url in alternative_urls:
                     logger.info(f"Trying alternative URL: {alt_url}")
                     models = self._try_api_endpoint(alt_url, timestamp)
-                    if models:
-                        logger.info(f"✅ Successfully scraped from {alt_url}")
+                    if models and len(models) > 5:  # Ensure we got substantial data
+                        logger.info(f"✅ Successfully scraped {len(models)} models from {alt_url}")
                         break
                 
-                # If API endpoints fail, try Selenium for JS rendering
-                if not models:
-                    logger.info("API endpoints failed, trying Selenium for JS rendering...")
-                    models = self._scrape_with_selenium(timestamp)
+                # Try fetching from HuggingFace Spaces iframe
+                if not models or len(models) < 5:
+                    logger.info("Trying to fetch from HuggingFace Spaces iframe...")
+                    iframe_models = self._try_huggingface_iframe(timestamp)
+                    if iframe_models and len(iframe_models) > len(models):
+                        models = iframe_models
                 
-                # If still no models, use fallback data
-                if not models:
-                    logger.warning("Could not scrape real data. Using known model data as fallback.")
-                    models = self._get_fallback_models(timestamp)
+                # If API endpoints fail, try Selenium for JS rendering
+                if not models or len(models) < 5:
+                    logger.info("API endpoints failed, trying Selenium for JS rendering...")
+                    selenium_models = self._scrape_with_selenium(timestamp)
+                    if selenium_models and len(selenium_models) > len(models):
+                        models = selenium_models
+                
+                # If still no models, fetch latest from web search/known sources
+                if not models or len(models) < 5:
+                    logger.warning("Could not scrape real data. Using latest known models from web.")
+                    models = self._get_latest_known_models(timestamp)
             
             logger.info(f"Successfully scraped {len(models)} models")
             return models
