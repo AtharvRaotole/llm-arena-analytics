@@ -717,12 +717,15 @@ class ChatbotArenaScraper:
             List of model data dictionaries
         """
         # Latest models from web search (updated Jan 2026)
+        # Claude 4.5 models released: Sonnet 4.5 (Sep 2025), Opus 4.5 (Nov 2025)
         known_models = [
             {'model_name': 'GPT-5.2', 'elo_rating': 1320.0, 'rank': 1},  # Dec 2025
-            {'model_name': 'Gemini 3 Pro', 'elo_rating': 1310.0, 'rank': 2},  # Nov 2025
-            {'model_name': 'Claude 3.7 Opus', 'elo_rating': 1305.0, 'rank': 3},
-            {'model_name': 'GPT-4o', 'elo_rating': 1289.0, 'rank': 4},
-            {'model_name': 'Claude 3.5 Sonnet', 'elo_rating': 1284.0, 'rank': 5},
+            {'model_name': 'Claude Opus 4.5', 'elo_rating': 1315.0, 'rank': 2},  # Nov 2025 - Latest Claude!
+            {'model_name': 'Gemini 3 Pro', 'elo_rating': 1310.0, 'rank': 3},  # Nov 2025
+            {'model_name': 'Claude Sonnet 4.5', 'elo_rating': 1308.0, 'rank': 4},  # Sep 2025 - Latest Claude Sonnet!
+            {'model_name': 'Claude 3.7 Opus', 'elo_rating': 1305.0, 'rank': 5},
+            {'model_name': 'GPT-4o', 'elo_rating': 1289.0, 'rank': 6},
+            {'model_name': 'Claude 3.5 Sonnet', 'elo_rating': 1284.0, 'rank': 7},
             {'model_name': 'Gemini 3 Flash', 'elo_rating': 1280.0, 'rank': 6},  # Dec 2025
             {'model_name': 'GPT-4 Turbo', 'elo_rating': 1281.0, 'rank': 7},
             {'model_name': 'Qwen3-Max', 'elo_rating': 1275.0, 'rank': 8},  # Sep 2025
