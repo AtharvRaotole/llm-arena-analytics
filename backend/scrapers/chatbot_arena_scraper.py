@@ -274,22 +274,29 @@ class ChatbotArenaScraper:
             # If still no models, try alternative data sources
             if not models:
                 logger.info("Trying alternative data sources")
-                # Try HuggingFace Spaces API (may require authentication)
+                # Try multiple API endpoints and direct URLs
                 alternative_urls = [
+                    "https://arena.lmsys.org/api/leaderboard",
+                    "https://arena.lmsys.org/api/elo",
                     "https://huggingface.co/api/spaces/lmsys/chatbot-arena-leaderboard",
+                    "https://chat.lmsys.org/api/leaderboard",
                 ]
                 
                 for alt_url in alternative_urls:
                     logger.info(f"Trying alternative URL: {alt_url}")
                     models = self._try_api_endpoint(alt_url, timestamp)
                     if models:
+                        logger.info(f"✅ Successfully scraped from {alt_url}")
                         break
                 
-                # If still no models, use fallback data
-                # The HuggingFace Spaces page uses dynamic content that requires JavaScript
-                # For now, we'll use known model rankings as fallback
+                # If API endpoints fail, try Selenium for JS rendering
                 if not models:
-                    logger.warning("Could not scrape real data from HuggingFace Spaces (requires JS rendering). Using known model data as fallback.")
+                    logger.info("API endpoints failed, trying Selenium for JS rendering...")
+                    models = self._scrape_with_selenium(timestamp)
+                
+                # If still no models, use fallback data
+                if not models:
+                    logger.warning("Could not scrape real data. Using known model data as fallback.")
                     models = self._get_fallback_models(timestamp)
             
             logger.info(f"Successfully scraped {len(models)} models")
