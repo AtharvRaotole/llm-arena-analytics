@@ -154,19 +154,27 @@ class CostOptimizer:
 
             if cost_per_1m < cheapest_cost:
                 cheapest_cost = cost_per_1m
-                cheapest = {
-                    'model_name': model_name,
-                    'provider': ranking.get('provider'),
-                    'score': float(score),
-                    'cost_per_1m_tokens': round(cost_per_1m, 2),
-                    'input_price_per_1k': input_price,
-                    'output_price_per_1k': output_price
-                }
+                cheapest = ranking  # Keep the full ranking dict
+                cheapest_pricing = price_data
 
         if not cheapest:
             raise ValueError(f"No models with pricing data found for score >= {min_score}")
 
-        return cheapest
+        # Get pricing for cheapest model
+        cheapest_pricing = pricing_dict[cheapest['id']]
+        input_price = cheapest_pricing.get('input_cost_per_token', 0.0) or 0.0
+        output_price = cheapest_pricing.get('output_cost_per_token', 0.0) or 0.0
+
+        return {
+            'model': cheapest['name'],
+            'model_name': cheapest['name'],  # Backward compatibility
+            'provider': cheapest.get('provider'),
+            'score': float(cheapest['score']),
+            'cost_per_1m': round(cheapest_cost, 2),
+            'cost_per_1m_tokens': round(cheapest_cost, 2),  # Backward compatibility
+            'input_price_per_1k': input_price * 1000,
+            'output_price_per_1k': output_price * 1000
+        }
 
     def calculate_value_score(self, model_name: str) -> float:
         """
