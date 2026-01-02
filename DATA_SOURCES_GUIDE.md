@@ -1,0 +1,269 @@
+# Data Sources Guide: Demo vs Real Data
+
+## 📊 Current Data Status
+
+### What's Using Demo/Fallback Data?
+
+1. **Arena Scraper** (`chatbot_arena_scraper.py`)
+   - ⚠️ **Has fallback data** if real scraping fails
+   - ✅ **Tries real scraping first** from multiple sources
+   - 🔍 **Fallback triggers when:**
+     - Website structure changes
+     - Network issues
+     - API endpoints unavailable
+
+2. **Pricing Scraper** (`pricing_scraper.py`)
+   - ⚠️ **Has fallback data** if real scraping fails
+   - ✅ **Tries real scraping first** from provider websites
+   - 🔍 **Fallback triggers when:**
+     - Website structure changes
+     - Rate limiting
+     - Network issues
+
+3. **Historical Data** (`seed_historical_data.py`)
+   - ⚠️ **Generates synthetic data** for testing
+   - ✅ **Uses realistic patterns** (random walk, trends)
+   - 📝 **Purpose:** Testing visualizations and ML models
+
+4. **Market Sentiment**
+   - ✅ **Hacker News:** Real data (no API needed)
+   - ⏳ **Reddit:** Real data (after API approval)
+   - ❌ **Twitter:** Not implemented
+
+---
+
+## 🔄 How to Use REAL Data
+
+### Step 1: Run Arena Scraper (Real Data)
+
+```bash
+docker-compose exec backend bash
+cd /app/scrapers
+python scraper_pipeline.py
+```
+
+**What it does:**
+- Scrapes real Chatbot Arena leaderboard
+- Inserts new models if found
+- Updates scores for today
+- Skips duplicates (unless `--force`)
+
+**Check if using real data:**
+```bash
+# Check the logs - should see:
+# "Starting leaderboard scrape"
+# "Successfully scraped X models"
+# NOT "Using known model data as fallback"
+```
+
+### Step 2: Run Pricing Scraper (Real Data)
+
+```bash
+docker-compose exec backend bash
+cd /app/scrapers
+python pricing_scraper.py
+```
+
+**What it does:**
+- Scrapes OpenAI, Anthropic, Google pricing pages
+- Extracts real current prices
+- Stores in database
+
+**Check if using real data:**
+- Look for actual price values matching current market rates
+- Fallback prices are outdated approximations
+
+### Step 3: Run Sentiment Scraper (Real Data)
+
+```bash
+docker-compose exec backend bash
+cd /app/scrapers
+python sentiment_scraper.py --days 30
+```
+
+**What it does:**
+- Scrapes Hacker News (real data, no API needed)
+- Scrapes Reddit (if credentials provided)
+- Stores in `market_sentiment` table
+
+---
+
+## 🧪 Testing: What You Should See
+
+### 1. Frontend Dashboard (http://localhost:8501)
+
+#### Leaderboard Page:
+- ✅ **Table with 10-20 models**
+- ✅ **Columns:** Rank, Model, Provider, Score
+- ✅ **Scores:** 1100-1300 range (realistic ELO)
+- ✅ **Providers:** OpenAI, Anthropic, Google, Meta, etc.
+- ✅ **Refresh button** works
+
+#### Performance Trends Page:
+- ✅ **Line chart** showing score evolution
+- ✅ **Date range picker** (default: last 30 days)
+- ✅ **Model selector** (multiselect, max 5)
+- ✅ **Statistics table** below chart
+
+#### Cost Intelligence Page:
+- ✅ **Interactive calculator** with sliders
+- ✅ **Value score leaderboard** table
+- ✅ **Price history chart** (last 90 days)
+- ✅ **Recommendations** based on cost/score
+
+#### Market Intelligence Page:
+- ✅ **Future rankings prediction** table
+- ✅ **Trend analysis** sparkline charts
+- ✅ **Market events timeline** (anomalies)
+- ✅ **Insights & recommendations** text
+
+### 2. Backend API (http://localhost:8000/docs)
+
+#### Test Endpoints:
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Leaderboard
+curl http://localhost:8000/models/leaderboard
+
+# Model history
+curl http://localhost:8000/models/GPT-4%20Turbo/history?days=30
+
+# Forecast
+curl http://localhost:8000/forecast/rank?days_ahead=30
+```
+
+### 3. Database Content
+
+```bash
+docker-compose exec postgres psql -U postgres -d llm_arena_analytics
+
+# Check models
+SELECT COUNT(*) FROM models;
+SELECT name, provider FROM models LIMIT 10;
+
+# Check arena rankings
+SELECT COUNT(*) FROM arena_rankings;
+SELECT m.name, ar.elo_rating, ar.recorded_at 
+FROM arena_rankings ar 
+JOIN models m ON ar.model_id = m.id 
+ORDER BY ar.recorded_at DESC 
+LIMIT 10;
+
+# Check pricing
+SELECT COUNT(*) FROM pricing_data;
+SELECT model_name, input_cost_per_token*1000 as input_per_1k, effective_date
+FROM pricing_data
+ORDER BY effective_date DESC
+LIMIT 10;
+```
+
+---
+
+## 🔍 How to Verify Real vs Demo Data
+
+### Arena Data:
+**Real data indicators:**
+- ✅ Scores match current Chatbot Arena leaderboard
+- ✅ Model names are current (e.g., GPT-4 Turbo, Claude 3.5 Sonnet)
+- ✅ Scores change daily when scraper runs
+- ✅ Logs show "Successfully scraped X models"
+
+**Demo data indicators:**
+- ⚠️ Logs show "Using known model data as fallback"
+- ⚠️ Scores don't match current leaderboard
+- ⚠️ Same scores every day
+
+### Pricing Data:
+**Real data indicators:**
+- ✅ Prices match current provider websites
+- ✅ Prices update when providers change them
+- ✅ Accurate to 4 decimal places
+
+**Demo data indicators:**
+- ⚠️ Prices are round numbers (approximations)
+- ⚠️ Prices never change
+- ⚠️ Missing newer models
+
+### Historical Data:
+**Synthetic data (for testing):**
+- ⚠️ Generated by `seed_historical_data.py`
+- ✅ Realistic patterns (trends, seasonality)
+- ✅ Used for ML training and visualizations
+- 📝 **This is intentional** - needed for testing
+
+---
+
+## 🚀 Daily Data Updates
+
+### Automated Scraping (Recommended)
+
+Create a cron job or scheduled task:
+
+```bash
+# Add to crontab (runs daily at 2 AM)
+0 2 * * * cd /path/to/llm-arena-analytics && docker-compose exec -T backend bash -c "cd /app/scrapers && python scraper_pipeline.py"
+```
+
+Or use Docker's restart policy + scheduled script.
+
+### Manual Updates
+
+```bash
+# Update arena data
+docker-compose exec backend bash -c "cd /app/scrapers && python scraper_pipeline.py"
+
+# Update pricing (weekly is fine)
+docker-compose exec backend bash -c "cd /app/scrapers && python pricing_scraper.py"
+
+# Update sentiment (daily)
+docker-compose exec backend bash -c "cd /app/scrapers && python sentiment_scraper.py --days 1"
+```
+
+---
+
+## 📝 Summary
+
+| Component | Current Status | Real Data? | How to Get Real Data |
+|-----------|---------------|------------|---------------------|
+| **Arena Scraper** | ✅ Working | ⚠️ Fallback available | Run `scraper_pipeline.py` |
+| **Pricing Scraper** | ✅ Working | ⚠️ Fallback available | Run `pricing_scraper.py` |
+| **Historical Data** | ✅ Working | ❌ Synthetic (intentional) | Keep synthetic for ML |
+| **Sentiment (HN)** | ✅ Working | ✅ Real data | Run `sentiment_scraper.py` |
+| **Sentiment (Reddit)** | ⏳ Waiting | ✅ Real (after API) | Add credentials |
+
+---
+
+## ✅ Quick Test Checklist
+
+- [ ] Frontend loads at http://localhost:8501
+- [ ] Leaderboard shows 10+ models
+- [ ] Performance trends chart displays
+- [ ] Cost Intelligence calculator works
+- [ ] Market Intelligence predictions show
+- [ ] API docs accessible at http://localhost:8000/docs
+- [ ] Database has models, rankings, pricing
+- [ ] Scrapers run without errors
+
+---
+
+## 🐛 Troubleshooting
+
+### If scrapers use fallback:
+1. Check network connectivity
+2. Verify website URLs are accessible
+3. Check scraper logs for errors
+4. Website structure may have changed (update scraper)
+
+### If no data in dashboard:
+1. Run seed script: `python seed_historical_data.py`
+2. Run scrapers: `python scraper_pipeline.py`
+3. Check database connection
+4. Verify Docker containers are running
+
+### If ML models don't work:
+1. Ensure historical data exists (90+ days)
+2. Run: `python performance_predictor.py`
+3. Check `data/models/` directory for saved models
+
