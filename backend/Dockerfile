@@ -2,10 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (including cmdstan build tools)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    make \
+    build-essential \
     postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -14,6 +16,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
+
+# Install cmdstan for Prophet (optional - enables Prophet forecasting)
+# Note: This takes several minutes but enables Prophet to work
+RUN pip install cmdstanpy && \
+    python -c "import cmdstanpy; cmdstanpy.install_cmdstan(verbose=False)" || echo "cmdstan installation skipped (Prophet will use fallback)"
 
 # Copy application code
 COPY . .
