@@ -305,10 +305,10 @@ class ChatbotArenaScraper:
                     if selenium_models and len(selenium_models) > len(models):
                         models = selenium_models
                 
-                # If still no models, fetch latest from web search/known sources
+                # If still no models, use fallback data
                 if not models or len(models) < 5:
                     logger.warning("Could not scrape real data. Using latest known models from web.")
-                    models = self._get_latest_known_models(timestamp)
+                    models = self._get_fallback_models(timestamp)
             
             logger.info(f"Successfully scraped {len(models)} models")
             return models
