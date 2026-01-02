@@ -156,35 +156,35 @@ def show_market_intel_page() -> None:
         display_df = rank_forecast_df.copy()
         display_df['change_indicator'] = display_df['rank_change'].apply(get_rank_change_indicator)
         
-        # Color coding function
-        def color_rank_change(val):
-            if val > 0:
-                return 'background-color: #90EE90'  # Light green
-            elif val < 0:
-                return 'background-color: #FFB6C1'  # Light pink
-            else:
-                return 'background-color: #F0F0F0'  # Light gray
+        # Format columns for display
+        display_df['current_score'] = display_df['current_score'].apply(lambda x: f'{x:.1f}' if pd.notna(x) else 'N/A')
+        display_df['predicted_score'] = display_df['predicted_score'].apply(lambda x: f'{x:.1f}' if pd.notna(x) else 'N/A')
+        
+        # Select columns to display
+        display_columns = ['model', 'provider', 'current_rank', 'predicted_rank', 
+                          'change_indicator', 'current_score', 'predicted_score']
+        
+        # Filter to only columns that exist
+        display_columns = [col for col in display_columns if col in display_df.columns]
+        final_df = display_df[display_columns].copy()
+        
+        # Rename columns for display
+        column_rename = {
+            'model': 'Model',
+            'provider': 'Provider',
+            'current_rank': 'Current Rank',
+            'predicted_rank': 'Predicted Rank',
+            'change_indicator': 'Change',
+            'current_score': 'Current Score',
+            'predicted_score': 'Predicted Score'
+        }
+        final_df = final_df.rename(columns={k: v for k, v in column_rename.items() if k in final_df.columns})
         
         # Display table
-        styled_df = display_df.style.applymap(
-            color_rank_change,
-            subset=['rank_change']
-        )
-        
         st.dataframe(
-            styled_df[['model', 'provider', 'current_rank', 'predicted_rank', 
-                      'change_indicator', 'current_score', 'predicted_score']],
+            final_df,
             use_container_width=True,
-            hide_index=True,
-            column_config={
-                'model': 'Model',
-                'provider': 'Provider',
-                'current_rank': 'Current Rank',
-                'predicted_rank': 'Predicted Rank',
-                'change_indicator': 'Change',
-                'current_score': st.column_config.NumberColumn('Current Score', format="%.1f"),
-                'predicted_score': st.column_config.NumberColumn('Predicted Score', format="%.1f")
-            }
+            hide_index=True
         )
         
         # Summary metrics

@@ -144,6 +144,7 @@ def show_performance_page() -> None:
     
     if df.empty:
         st.warning(f"⚠️ No performance data available for {selected_model_name} in the selected date range.")
+        st.info(f"💡 **Tip:** Try selecting a different date range or run the seed script to generate historical data:\n\n```bash\ndocker-compose exec backend bash -c 'cd /app/scripts && python seed_historical_data.py'\n```")
         return
     
     # Performance metrics section
