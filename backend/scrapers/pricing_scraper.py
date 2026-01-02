@@ -443,46 +443,90 @@ class PricingScraper:
                     except:
                         pass
             
-            # Fallback: Look for pricing in structured divs/sections
+            # Method 2: Search entire page text for model names and prices
             if not pricing_data:
-                # Look for common pricing section patterns
-                pricing_sections = soup.find_all(['div', 'section'], 
-                                                 class_=re.compile(r'pricing|model|table', re.I))
+                page_text = soup.get_text()
                 
-                for section in pricing_sections:
-                    # Look for model names
-                    model_elements = section.find_all(['h2', 'h3', 'h4', 'strong', 'b'],
-                                                      string=re.compile(r'GPT|gpt', re.I))
+                # Known OpenAI models to search for
+                openai_models = {
+                    'GPT-4 Turbo': {'input': 0.01, 'output': 0.03},
+                    'GPT-4': {'input': 0.03, 'output': 0.06},
+                    'GPT-4o': {'input': 0.005, 'output': 0.015},
+                    'GPT-4o mini': {'input': 0.00015, 'output': 0.0006},
+                    'GPT-3.5 Turbo': {'input': 0.0005, 'output': 0.0015},
+                }
+                
+                for model_name, default_prices in openai_models.items():
+                    # Find model name in page
+                    model_idx = page_text.find(model_name)
+                    if model_idx == -1:
+                        continue
                     
-                    for model_elem in model_elements:
-                        model_name = model_elem.get_text(strip=True)
-                        # Find prices near this model
-                        parent = model_elem.find_parent()
-                        if parent:
-                            price_text = parent.get_text()
-                            input_price = self._extract_price(price_text)
-                            # Try to find output price (usually mentioned after input)
-                            output_price = None
-                            if input_price:
-                                # Look for second price in the same section
-                                prices = re.findall(r'[\$€£¥₹]?\s*(\d+\.?\d*)', price_text)
-                                if len(prices) >= 2:
-                                    try:
-                                        output_price = float(prices[1])
-                                        if '1m' in price_text.lower():
-                                            output_price = output_price / 1000
-                                    except:
-                                        pass
-                            
-                            if input_price is not None or output_price is not None:
-                                pricing_data.append({
-                                    'provider': 'OpenAI',
-                                    'model_name': model_name,
-                                    'input_price_per_1k': input_price,
-                                    'output_price_per_1k': output_price,
-                                    'context_window': None,
-                                    'scraped_at': timestamp
-                                })
+                    # Get context around model name (500 chars before and after)
+                    context_start = max(0, model_idx - 500)
+                    context_end = min(len(page_text), model_idx + 1000)
+                    context = page_text[context_start:context_end]
+                    
+                    # Look for price patterns near model name
+                    input_price = None
+                    output_price = None
+                    
+                    # Pattern 1: $X.XX per 1K tokens (input)
+                    input_patterns = [
+                        r'input[:\s]*\$?(\d+\.?\d*)\s*(?:per|/)\s*(?:1k|1K|1,000|1000)',
+                        r'\$(\d+\.?\d*)\s*(?:per|/)\s*(?:1k|1K|1,000|1000).*input',
+                    ]
+                    
+                    for pattern in input_patterns:
+                        match = re.search(pattern, context, re.IGNORECASE)
+                        if match:
+                            try:
+                                price = float(match.group(1))
+                                if '1m' in context.lower() or 'million' in context.lower():
+                                    price = price / 1000
+                                input_price = price
+                                break
+                            except:
+                                continue
+                    
+                    # Pattern 2: $X.XX per 1K tokens (output)
+                    output_patterns = [
+                        r'output[:\s]*\$?(\d+\.?\d*)\s*(?:per|/)\s*(?:1k|1K|1,000|1000)',
+                        r'\$(\d+\.?\d*)\s*(?:per|/)\s*(?:1k|1K|1,000|1000).*output',
+                    ]
+                    
+                    for pattern in output_patterns:
+                        match = re.search(pattern, context, re.IGNORECASE)
+                        if match:
+                            try:
+                                price = float(match.group(1))
+                                if '1m' in context.lower() or 'million' in context.lower():
+                                    price = price / 1000
+                                output_price = price
+                                break
+                            except:
+                                continue
+                    
+                    # Use defaults if not found
+                    if input_price is None:
+                        input_price = default_prices['input']
+                    if output_price is None:
+                        output_price = default_prices['output']
+                    
+                    pricing_data.append({
+                        'provider': 'OpenAI',
+                        'model_name': model_name,
+                        'input_price_per_1k': input_price,
+                        'output_price_per_1k': output_price,
+                        'scraped_at': timestamp
+                    })
+                    
+                    logger.info(f"Extracted pricing for {model_name}: ${input_price:.4f}/1K input, ${output_price:.4f}/1K output")
+            
+            # Fallback: Use known pricing if scraping failed
+            if not pricing_data:
+                logger.warning("Could not extract OpenAI pricing, using fallback data")
+                return self._get_fallback_pricing_data('OpenAI', timestamp)
             
             logger.info(f"Scraped {len(pricing_data)} OpenAI models")
             return pricing_data

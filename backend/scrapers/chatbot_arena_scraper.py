@@ -519,6 +519,137 @@ class ChatbotArenaScraper:
         
         return models
     
+    def _scrape_with_selenium(self, timestamp: str) -> List[Dict[str, Any]]:
+        """
+        Scrape leaderboard using Selenium for JavaScript rendering.
+        
+        Args:
+            timestamp: Timestamp string
+            
+        Returns:
+            List of model data dictionaries
+        """
+        try:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.chrome.service import Service
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from webdriver_manager.chrome import ChromeDriverManager
+            import time
+            
+            logger.info("Initializing Selenium WebDriver...")
+            
+            # Setup Chrome options
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--window-size=1920,1080')
+            chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            
+            # Initialize driver
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            try:
+                logger.info(f"Loading page: {self.base_url}")
+                driver.get(self.base_url)
+                
+                # Wait for content to load (up to 30 seconds)
+                wait = WebDriverWait(driver, 30)
+                
+                # Try to find leaderboard table or content
+                selectors = [
+                    "table",
+                    "[class*='leaderboard']",
+                    "[class*='table']",
+                    "[data-testid*='table']",
+                    "iframe",
+                ]
+                
+                element_found = False
+                for selector in selectors:
+                    try:
+                        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                        element_found = True
+                        logger.info(f"Found element with selector: {selector}")
+                        break
+                    except:
+                        continue
+                
+                if not element_found:
+                    logger.warning("Could not find leaderboard content with Selenium")
+                    return []
+                
+                # Wait a bit more for dynamic content
+                time.sleep(5)
+                
+                # Get page source and parse with BeautifulSoup
+                page_source = driver.page_source
+                soup = BeautifulSoup(page_source, 'html.parser')
+                
+                models = []
+                
+                # Try to find table
+                tables = soup.find_all('table')
+                if tables:
+                    logger.info(f"Found {len(tables)} table(s) with Selenium")
+                    for table in tables:
+                        rows = table.find_all('tr')[1:]  # Skip header
+                        for row in rows:
+                            cells = row.find_all(['td', 'th'])
+                            if len(cells) >= 3:
+                                model_data = self._parse_table_row(cells, timestamp)
+                                if model_data and self._validate_model_data(model_data):
+                                    models.append(model_data)
+                
+                # Try to find iframe and switch to it
+                if not models:
+                    iframes = driver.find_elements(By.TAG_NAME, "iframe")
+                    for iframe in iframes:
+                        try:
+                            driver.switch_to.frame(iframe)
+                            time.sleep(3)
+                            page_source = driver.page_source
+                            soup = BeautifulSoup(page_source, 'html.parser')
+                            tables = soup.find_all('table')
+                            if tables:
+                                for table in tables:
+                                    rows = table.find_all('tr')[1:]
+                                    for row in rows:
+                                        cells = row.find_all(['td', 'th'])
+                                        if len(cells) >= 3:
+                                            model_data = self._parse_table_row(cells, timestamp)
+                                            if model_data and self._validate_model_data(model_data):
+                                                models.append(model_data)
+                            driver.switch_to.default_content()
+                            if models:
+                                break
+                        except Exception as e:
+                            logger.debug(f"Error with iframe: {e}")
+                            driver.switch_to.default_content()
+                            continue
+                
+                if models:
+                    logger.info(f"✅ Successfully scraped {len(models)} models with Selenium")
+                else:
+                    logger.warning("Selenium found page but couldn't extract models")
+                
+                return models
+                
+            finally:
+                driver.quit()
+                
+        except ImportError:
+            logger.warning("Selenium not available. Install with: pip install selenium webdriver-manager")
+            return []
+        except Exception as e:
+            logger.error(f"Selenium scraping failed: {e}", exc_info=True)
+            return []
+    
     def _get_fallback_models(self, timestamp: str) -> List[Dict[str, Any]]:
         """
         Get fallback model data when scraping fails.
